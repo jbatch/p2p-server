@@ -160,7 +160,7 @@ This server implements several security measures:
 
 ## Example Implementation
 
-Check out the `example` directory for a complete implementation showing how to:
+Check out the [example](example) directory for a complete implementation showing how to:
 
 - Create and join rooms
 - Establish WebRTC connections
