@@ -1,4 +1,3 @@
-// example/src/components/ConnectionStatus.tsx
 import React from "react";
 import { WebRTCState } from "../types";
 
@@ -6,12 +5,14 @@ interface Props {
   peerId: string;
   state?: WebRTCState;
   onStartConnection: (peerId: string) => void;
+  onSendPing?: (peerId: string) => void;
 }
 
 export const ConnectionStatus: React.FC<Props> = ({
   peerId,
   state,
   onStartConnection,
+  onSendPing,
 }) => {
   const getStatusColor = (status?: string) => {
     switch (status) {
@@ -26,6 +27,11 @@ export const ConnectionStatus: React.FC<Props> = ({
     }
   };
 
+  const handlePingClick = () => {
+    console.log("Sending ping to peer:", peerId);
+    onSendPing?.(peerId);
+  };
+
   return (
     <div className="border rounded p-4 mb-2">
       <div className="flex items-center justify-between mb-2">
@@ -35,14 +41,24 @@ export const ConnectionStatus: React.FC<Props> = ({
           />
           <span className="font-medium">Peer {peerId.slice(0, 8)}</span>
         </div>
-        {(!state || state.status === "idle") && (
-          <button
-            onClick={() => onStartConnection(peerId)}
-            className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
-          >
-            Connect
-          </button>
-        )}
+        <div className="flex gap-2">
+          {(!state || state.status === "idle") && (
+            <button
+              onClick={() => onStartConnection(peerId)}
+              className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+            >
+              Connect
+            </button>
+          )}
+          {state?.status === "connected" && (
+            <button
+              onClick={handlePingClick}
+              className="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
+            >
+              PING
+            </button>
+          )}
+        </div>
       </div>
 
       {state && (

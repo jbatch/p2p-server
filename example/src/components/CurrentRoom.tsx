@@ -1,9 +1,8 @@
-// example/src/components/CurrentRoom.tsx
 import React from "react";
 import { Peer } from "../types";
-import { useWebRTC } from "../hooks/useWebRTC";
 import { Socket } from "socket.io-client";
 import { ConnectionStatus } from "./ConnectionStatus";
+import { useExampleWebRTC } from "../hooks/useExampleWebRTC";
 
 interface Props {
   roomId: string;
@@ -18,11 +17,12 @@ export const CurrentRoom: React.FC<Props> = ({
   currentUserId,
   socket,
 }) => {
-  const { state, startConnection } = useWebRTC(
+  const { state, startConnection, sendPing } = useExampleWebRTC(
     socket,
     roomId,
     peers.map((p) => p.id)
   );
+
   return (
     <div className="bg-white p-6 rounded-lg shadow">
       <h2 className="text-xl font-bold mb-4">Current Room</h2>
@@ -66,6 +66,7 @@ export const CurrentRoom: React.FC<Props> = ({
                 peerId={peer.id}
                 state={state[peer.id]}
                 onStartConnection={startConnection}
+                onSendPing={sendPing}
               />
             ))}
         </div>

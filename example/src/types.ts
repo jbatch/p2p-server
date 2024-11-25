@@ -29,7 +29,13 @@ export interface WebRTCState {
     remoteDescription?: string;
   };
 }
-
 export interface ConnectionState {
   [peerId: string]: WebRTCState;
 }
+
+export interface Message {
+  type: string;
+  [key: string]: any;
+}
+
+export type MessageHandler = (peerId: string, message: Message) => void;

@@ -1,33 +1,81 @@
 // example/src/hooks/useWebRTC.ts
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Socket } from "socket.io-client";
+import { ConnectionState, Message, MessageHandler } from "../types";
 
-interface WebRTCState {
-  status: "idle" | "connecting" | "connected" | "failed";
-  error?: string;
-  connectionInfo: {
-    localCandidates: number;
-    remoteCandidates: number;
-    localDescription?: string;
-    remoteDescription?: string;
-  };
+interface UseWebRTCOptions {
+  onMessage?: MessageHandler;
 }
 
 export const useWebRTC = (
   socket: Socket | null,
   roomId: string | null,
-  peers: string[]
+  peers: string[],
+  options: UseWebRTCOptions = {}
 ) => {
-  const [state, setState] = useState<Record<string, WebRTCState>>({});
+  const [state, setState] = useState<ConnectionState>({});
   const connections = useRef<Record<string, RTCPeerConnection>>({});
   const dataChannels = useRef<Record<string, RTCDataChannel>>({});
+  const messageHandlers = useRef<Set<MessageHandler>>(new Set());
+
+  const addMessageHandler = useCallback((handler: MessageHandler) => {
+    messageHandlers.current.add(handler);
+    return () => {
+      messageHandlers.current.delete(handler);
+    };
+  }, []);
+
+  const handleMessage = useCallback((peerId: string, message: Message) => {
+    console.log(`[useWebRTC] Received message from ${peerId}:`, message);
+
+    // Call all registered handlers
+    messageHandlers.current.forEach((handler) => {
+      try {
+        handler(peerId, message);
+      } catch (error) {
+        console.error(`[useWebRTC] Error in message handler:`, error);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (options.onMessage) {
+      return addMessageHandler(options.onMessage);
+    }
+  }, [options.onMessage, addMessageHandler]);
+
+  const sendMessage = useCallback((peerId: string, message: Message) => {
+    const channel = dataChannels.current[peerId];
+    if (!channel) {
+      console.error(`[useWebRTC] No data channel found for peer ${peerId}`);
+      return;
+    }
+
+    if (channel.readyState !== "open") {
+      console.error(
+        `[useWebRTC] Data channel for peer ${peerId} is not open`,
+        channel.readyState
+      );
+      return;
+    }
+
+    try {
+      console.log(`[useWebRTC] Sending message to peer ${peerId}:`, message);
+      channel.send(JSON.stringify(message));
+    } catch (error) {
+      console.error(
+        `[useWebRTC] Failed to send message to peer ${peerId}:`,
+        error
+      );
+    }
+  }, []);
 
   // Initialize peer connection
   const initConnection = useCallback(
     (peerId: string) => {
       if (connections.current[peerId]) return;
 
-      console.log(`Initializing connection with peer ${peerId}`);
+      console.log(`[useWebRTC] Initializing connection with peer ${peerId}`);
 
       const pc = new RTCPeerConnection({
         iceServers: [
@@ -42,7 +90,7 @@ export const useWebRTC = (
       });
 
       channel.onopen = () => {
-        console.log(`Data channel with ${peerId} opened`);
+        console.log(`[useWebRTC] Data channel with ${peerId} opened`);
         setState((prev) => ({
           ...prev,
           [peerId]: {
@@ -53,11 +101,20 @@ export const useWebRTC = (
       };
 
       channel.onclose = () => {
-        console.log(`Data channel with ${peerId} closed`);
+        console.log(`[useWebRTC] Data channel with ${peerId} closed`);
       };
 
       channel.onmessage = (event) => {
-        console.log(`Message from ${peerId}:`, event.data);
+        console.log("EVENT", { event });
+        try {
+          const message = JSON.parse(event.data);
+          handleMessage(peerId, message);
+        } catch (error) {
+          console.error(
+            `[useWebRTC] Failed to parse message from ${peerId}:`,
+            error
+          );
+        }
       };
 
       dataChannels.current[peerId] = channel;
@@ -120,7 +177,7 @@ export const useWebRTC = (
 
       return pc;
     },
-    [socket]
+    [socket, handleMessage]
   );
 
   // Start connection process
@@ -279,5 +336,7 @@ export const useWebRTC = (
   return {
     state,
     startConnection,
+    sendMessage,
+    addMessageHandler,
   };
 };
