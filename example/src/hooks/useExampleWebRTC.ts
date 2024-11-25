@@ -1,8 +1,11 @@
 // example/src/hooks/useExampleWebRTC.ts
 import { useCallback, useEffect } from "react";
 import { Socket } from "socket.io-client";
-import { useWebRTC } from "./useWebRTC";
-import { ConnectionState, Message } from "../types";
+import {
+  type ConnectionState,
+  type Message,
+  useWebRTC,
+} from "@jbatch/webrtc-client";
 
 interface PingMessage extends Message {
   type: "PING";

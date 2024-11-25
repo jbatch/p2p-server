@@ -1,7 +1,11 @@
 // example/src/hooks/useWebRTC.ts
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Socket } from "socket.io-client";
-import { ConnectionState, Message, MessageHandler } from "../types";
+import {
+  type ConnectionState,
+  type Message,
+  type MessageHandler,
+} from "../types";
 
 interface UseWebRTCOptions {
   onMessage?: MessageHandler;

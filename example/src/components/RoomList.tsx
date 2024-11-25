@@ -1,6 +1,6 @@
 // example/src/components/RoomList.tsx
+import { type Room } from "@jbatch/webrtc-client";
 import React from "react";
-import { Room } from "../types";
 
 interface Props {
   rooms: Room[];

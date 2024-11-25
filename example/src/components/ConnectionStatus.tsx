@@ -1,5 +1,5 @@
+import { type WebRTCState } from "@jbatch/webrtc-client";
 import React from "react";
-import { WebRTCState } from "../types";
 
 interface Props {
   peerId: string;

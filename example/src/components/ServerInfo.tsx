@@ -1,6 +1,6 @@
 // example/src/components/ServerInfo.tsx
+import { type ServerStatus } from "@jbatch/webrtc-client";
 import React from "react";
-import { ServerStatus } from "../types";
 
 interface Props {
   status: ServerStatus | null;

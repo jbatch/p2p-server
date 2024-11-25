@@ -1,8 +1,8 @@
 import React from "react";
-import { Peer } from "../types";
 import { Socket } from "socket.io-client";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { useExampleWebRTC } from "../hooks/useExampleWebRTC";
+import { type Peer } from "@jbatch/webrtc-client";
 
 interface Props {
   roomId: string;

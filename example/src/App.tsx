@@ -1,11 +1,11 @@
 // example/src/App.tsx
 import React, { useEffect } from "react";
 import "./App.css";
-import { useSignaling } from "./hooks/useSignalling";
 import { RoomCreator } from "./components/RoomCreator";
 import { RoomList } from "./components/RoomList";
 import { CurrentRoom } from "./components/CurrentRoom";
 import { ServerInfo } from "./components/ServerInfo";
+import { useSignaling } from "@jbatch/webrtc-client";
 
 const SIGNALING_SERVER = "http://localhost:3001";
 
