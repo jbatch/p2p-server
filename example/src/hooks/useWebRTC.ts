@@ -84,37 +84,69 @@ export const useWebRTC = (
         ],
       });
 
+      const handleDataChannel = (channel: RTCDataChannel) => {
+        console.log(
+          `[useWebRTC] Setting up data channel for peer ${peerId}`,
+          channel.label
+        );
+
+        channel.onopen = () => {
+          console.log(
+            `[useWebRTC] Data channel ${channel.label} with ${peerId} opened`
+          );
+          setState((prev) => ({
+            ...prev,
+            [peerId]: {
+              ...prev[peerId],
+              status: "connected" as const,
+            },
+          }));
+        };
+
+        channel.onclose = () => {
+          console.log(
+            `[useWebRTC] Data channel ${channel.label} with ${peerId} closed`
+          );
+        };
+
+        channel.onerror = (error) => {
+          console.error(
+            `[useWebRTC] Data channel ${channel.label} error:`,
+            error
+          );
+        };
+
+        channel.onmessage = (event) => {
+          console.log(
+            `[useWebRTC] Received raw message on ${channel.label}:`,
+            event.data
+          );
+          try {
+            const message = JSON.parse(event.data);
+            handleMessage(peerId, message);
+          } catch (error) {
+            console.error(
+              `[useWebRTC] Failed to parse message from ${peerId}:`,
+              error
+            );
+          }
+        };
+
+        dataChannels.current[peerId] = channel;
+      };
+
       // Create data channel
       const channel = pc.createDataChannel(`data-${peerId}`, {
         ordered: true,
       });
+      handleDataChannel(channel);
 
-      channel.onopen = () => {
-        console.log(`[useWebRTC] Data channel with ${peerId} opened`);
-        setState((prev) => ({
-          ...prev,
-          [peerId]: {
-            ...prev[peerId],
-            status: "connected" as const,
-          },
-        }));
-      };
-
-      channel.onclose = () => {
-        console.log(`[useWebRTC] Data channel with ${peerId} closed`);
-      };
-
-      channel.onmessage = (event) => {
-        console.log("EVENT", { event });
-        try {
-          const message = JSON.parse(event.data);
-          handleMessage(peerId, message);
-        } catch (error) {
-          console.error(
-            `[useWebRTC] Failed to parse message from ${peerId}:`,
-            error
-          );
-        }
+      pc.ondatachannel = (event) => {
+        console.log(
+          `[useWebRTC] Received data channel from ${peerId}`,
+          event.channel.label
+        );
+        handleDataChannel(event.channel);
       };
 
       dataChannels.current[peerId] = channel;
