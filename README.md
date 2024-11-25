@@ -14,13 +14,17 @@ A game-agnostic WebRTC signaling server designed to facilitate peer-to-peer conn
 - 🚀 Production-ready logging
 - ⚡ TypeScript support
 
-## Prerequisites
+## Getting Started
 
-- Node.js >= 18.0.0
-- npm or yarn
-- TypeScript knowledge (for development)
+### Server Setup
 
-## Installation
+1. Prerequisites:
+
+   - Node.js >= 18.0.0
+   - npm or yarn
+   - TypeScript knowledge (for development)
+
+2. Installation:
 
 ```bash
 # Clone the repository
@@ -31,6 +35,41 @@ cd p2p-server
 
 # Install dependencies
 yarn install
+```
+
+### Client Integration
+
+1. Install the client package in your game project:
+
+```bash
+yarn add @jbatch/webrtc-client
+```
+
+2. Basic usage:
+
+```typescript
+import { useWebRTC, useSignaling } from "@jbatch/webrtc-client";
+
+function GameComponent() {
+  const {
+    isConnected,
+    currentRoom,
+    peers,
+    availableRooms,
+    error,
+    createRoom,
+    joinRoom,
+    listRooms,
+  } = useSignaling("http://your-signaling-server:3001");
+
+  const { state, startConnection, sendMessage, addMessageHandler } = useWebRTC(
+    socket,
+    roomId,
+    peers
+  );
+
+  // Your game logic here
+}
 ```
 
 ## Configuration
@@ -57,9 +96,9 @@ ROOM_TIMEOUT_MS=3600000
 | MAX_ROOMS       | Maximum number of concurrent rooms        | 1000        |
 | ROOM_TIMEOUT_MS | Room timeout in milliseconds              | 3600000     |
 
-## Usage
+## Development
 
-### Development
+### Server
 
 ```bash
 # Start development server with hot reload
@@ -69,6 +108,9 @@ yarn dev
 yarn typecheck
 
 # Lint code
+yarn lint
+
+# Format code
 yarn format
 ```
 
@@ -106,243 +148,6 @@ yarn start
 | room-list    | `{ rooms: Array<RoomInfo> }`           | List of available rooms  |
 | error        | `{ message: string }`                  | Error message            |
 
-## Extending the WebRTC Hook
-
-The `useWebRTC` hook provides a foundation for peer-to-peer communication. You can extend it to handle custom message types for your specific use case. Here's how to create a custom hook:
-
-### 1. Define Your Message Types
-
-First, define the types for your custom messages:
-
-```typescript
-// types.ts
-interface BaseMessage {
-  type: string;
-}
-
-interface GameStateMessage extends BaseMessage {
-  type: "GAME_STATE";
-  state: {
-    score: number;
-    position: { x: number; y: number };
-  };
-}
-
-interface PlayerActionMessage extends BaseMessage {
-  type: "PLAYER_ACTION";
-  action: string;
-  timestamp: number;
-}
-
-type GameMessage = GameStateMessage | PlayerActionMessage;
-```
-
-### 2. Create a Custom Hook
-
-Create a new hook that wraps `useWebRTC` and handles your specific message types:
-
-```typescript
-// useGameConnection.ts
-import { useCallback, useEffect } from "react";
-import { Socket } from "socket.io-client";
-import { useWebRTC } from "./useWebRTC";
-
-export const useGameConnection = (
-  socket: Socket | null,
-  roomId: string | null,
-  peers: string[]
-) => {
-  const { state, startConnection, sendMessage, addMessageHandler } = useWebRTC(
-    socket,
-    roomId,
-    peers
-  );
-
-  // Handle incoming messages
-  const handleMessage = useCallback((peerId: string, message: GameMessage) => {
-    switch (message.type) {
-      case "GAME_STATE":
-        // Handle game state update
-        console.log(`Received game state from ${peerId}:`, message.state);
-        break;
-      case "PLAYER_ACTION":
-        // Handle player action
-        console.log(`Received player action from ${peerId}:`, message.action);
-        break;
-    }
-  }, []);
-
-  // Register message handler
-  useEffect(() => {
-    return addMessageHandler(handleMessage);
-  }, [addMessageHandler, handleMessage]);
-
-  // Custom methods for your game
-  const sendGameState = useCallback(
-    (peerId: string, state: GameStateMessage["state"]) => {
-      sendMessage(peerId, {
-        type: "GAME_STATE",
-        state,
-      });
-    },
-    [sendMessage]
-  );
-
-  const sendPlayerAction = useCallback(
-    (peerId: string, action: string) => {
-      sendMessage(peerId, {
-        type: "PLAYER_ACTION",
-        action,
-        timestamp: Date.now(),
-      });
-    },
-    [sendMessage]
-  );
-
-  return {
-    state,
-    startConnection,
-    sendGameState,
-    sendPlayerAction,
-  };
-};
-```
-
-### 3. Use the Custom Hook
-
-Now you can use your custom hook in your game components:
-
-```typescript
-// GameComponent.tsx
-const Game: React.FC = () => {
-  const { state, sendGameState, sendPlayerAction } = useGameConnection(
-    socket,
-    roomId,
-    peers
-  );
-
-  const handlePlayerMove = (action: string) => {
-    // Send action to all peers
-    peers.forEach(peerId => {
-      sendPlayerAction(peerId, action);
-    });
-  };
-
-  const syncGameState = (state: GameState) => {
-    // Sync state with all peers
-    peers.forEach(peerId => {
-      sendGameState(peerId, state);
-    });
-  };
-
-  return (
-    // Your game UI
-  );
-};
-```
-
-### Best Practices
-
-1. **Message Validation**: Always validate incoming messages before processing them:
-
-   ```typescript
-   const isGameStateMessage = (message: any): message is GameStateMessage => {
-     return (
-       message.type === "GAME_STATE" &&
-       typeof message.state === "object" &&
-       typeof message.state.score === "number"
-     );
-   };
-   ```
-
-2. **Error Handling**: Implement proper error handling for message processing:
-
-   ```typescript
-   const handleMessage = useCallback((peerId: string, message: any) => {
-     try {
-       if (isGameStateMessage(message)) {
-         // Handle game state
-       } else {
-         console.warn(`Unknown message type: ${message.type}`);
-       }
-     } catch (error) {
-       console.error("Error processing message:", error);
-     }
-   }, []);
-   ```
-
-3. **State Management**: Consider using a state management solution for complex games:
-
-   ```typescript
-   const [gameState, dispatch] = useReducer(gameReducer, initialState);
-
-   const handleMessage = useCallback((peerId: string, message: GameMessage) => {
-     if (message.type === "PLAYER_ACTION") {
-       dispatch({
-         type: "APPLY_ACTION",
-         payload: message.action,
-         peerId,
-       });
-     }
-   }, []);
-   ```
-
-4. **Message Queuing**: For time-sensitive applications, implement a message queue:
-
-   ```typescript
-   const messageQueue = useRef<GameMessage[]>([]);
-
-   useEffect(() => {
-     const processQueue = () => {
-       while (messageQueue.current.length > 0) {
-         const message = messageQueue.current.shift();
-         if (message) processMessage(message);
-       }
-     };
-
-     const interval = setInterval(processQueue, 16); // 60fps
-     return () => clearInterval(interval);
-   }, []);
-   ```
-
-## Client Integration Example
-
-```typescript
-import { io } from "socket.io-client";
-
-// Connect to signaling server
-const socket = io("http://localhost:3001");
-
-// Create a new room
-socket.emit("create-room", {
-  gameType: "your-game-name",
-  maxClients: 2,
-});
-
-// Listen for room creation
-socket.on("room-created", ({ roomId }) => {
-  console.log(`Room created: ${roomId}`);
-});
-
-// Join existing room
-socket.emit("join-room", { roomId: "shared-room-id" });
-
-// Handle peer joining
-socket.on("peer-joined", ({ peerId }) => {
-  // Initialize WebRTC connection
-});
-
-// Forward WebRTC signals
-socket.on("signal", ({ peerId, signal }) => {
-  // Handle incoming WebRTC signal
-});
-
-// Handle errors
-socket.on("error", ({ message }) => {
-  console.error(`Error: ${message}`);
-});
-```
-
 ## Security
 
 This server implements several security measures:
@@ -352,3 +157,16 @@ This server implements several security measures:
 - Input validation
 - Rate limiting (TODO)
 - WebSocket authentication (TODO)
+
+## Example Implementation
+
+Check out the `example` directory for a complete implementation showing how to:
+
+- Create and join rooms
+- Establish WebRTC connections
+- Handle peer connections
+- Send and receive messages
+
+## License
+
+MIT License - see the [LICENSE](LICENSE) file for details.
