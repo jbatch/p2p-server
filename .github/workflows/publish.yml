@@ -1,0 +1,30 @@
+name: publish
+on:
+  push:
+    branches:
+      - master
+jobs:
+  publish-tak-docker-image:
+    name: Publish p2p Server Docker Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Use Node.js 16
+        uses: actions/setup-node@v2
+        with:
+          node-version: 20
+          cache: "yarn"
+      - name: Install dependencies
+        run: yarn install
+      - name: Build static files
+        run: yarn build
+      - name: Build the p2p Server Docker image
+        run: |
+          docker build . --tag ghcr.io/jbatch/p2p-server:latest
+          docker push ghcr.io/jbatch/p2p-server:latest
