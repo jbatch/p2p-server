@@ -55,9 +55,34 @@ export const createSignalingServer = () => {
     transports: ["websocket", "polling"],
   });
 
+  io.engine.on("connection_error", (err) => {
+    logger.error(
+      {
+        error: err.message,
+        code: err.code,
+        context: err.context,
+        req: err.req?.url,
+        headers: err.req?.headers,
+      },
+      "Socket.IO connection error"
+    );
+  });
+
+  io.engine.on("initial_headers", (headers, req) => {
+    logger.debug(
+      {
+        url: req.url,
+        method: req.method,
+        headers: req.headers,
+      },
+      "Socket.IO initial headers"
+    );
+  });
+
   const server: SignalingServer = {
     rooms: new Map(),
     clientToRoom: new Map(),
+    clientSessions: new Map(),
   };
 
   // Set up periodic cleanup of stale rooms
@@ -86,6 +111,9 @@ export const createSignalingServer = () => {
     socket.on("join-room", (payload) =>
       handlers.handleJoinRoom(socket, payload)
     );
+    socket.on("rejoin-room", (payload) =>
+      handlers.handleRejoinRoom(socket, payload)
+    );
     socket.on("signal", (payload) => handlers.handleSignal(socket, payload));
     socket.on("list-rooms", (payload) =>
       handlers.handleListRooms(socket, payload)
@@ -96,6 +124,8 @@ export const createSignalingServer = () => {
     socket.on("error", (error) => {
       logger.error({ error, clientId: socket.id }, "Socket error");
     });
+
+    handlers.handleConnection(socket);
   });
 
   return httpServer;

@@ -8,4 +8,5 @@ export type {
   ConnectionState,
   Message,
   MessageHandler,
+  StorageProvider,
 } from "./types";

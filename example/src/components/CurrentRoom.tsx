@@ -47,11 +47,18 @@ export const CurrentRoom: React.FC<Props> = ({
                 <div className="truncate">
                   {peer.id === currentUserId ? "You" : peer.id}
                 </div>
-                {peer.isHost && (
-                  <span className="text-sm bg-yellow-200 px-2 py-1 rounded">
-                    Host
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {peer.isHost && (
+                    <span className="text-sm bg-yellow-200 px-2 py-1 rounded">
+                      Host
+                    </span>
+                  )}
+                  {peer.disconnected && (
+                    <span className="text-sm bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                      Reconnecting...
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -67,6 +74,7 @@ export const CurrentRoom: React.FC<Props> = ({
                 state={state[peer.id]}
                 onStartConnection={startConnection}
                 onSendPing={sendPing}
+                isDisconnected={peer.disconnected}
               />
             ))}
         </div>

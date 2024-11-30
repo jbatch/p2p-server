@@ -5,9 +5,20 @@ import { RoomCreator } from "./components/RoomCreator";
 import { RoomList } from "./components/RoomList";
 import { CurrentRoom } from "./components/CurrentRoom";
 import { ServerInfo } from "./components/ServerInfo";
-import { useSignaling } from "@jbatch/webrtc-client";
+import { type StorageProvider, useSignaling } from "@jbatch/webrtc-client";
 
 const SIGNALING_SERVER = "http://localhost:3001";
+
+const createStorageProvider = (): StorageProvider => {
+  const useSessionStorage = import.meta.env.VITE_USE_SESSION_STORAGE === "true";
+  const storage = useSessionStorage ? sessionStorage : localStorage;
+
+  return {
+    getItem: (key: string) => storage.getItem(key),
+    setItem: (key: string, value: string) => storage.setItem(key, value),
+    removeItem: (key: string) => storage.removeItem(key),
+  };
+};
 
 const App: React.FC = () => {
   const {
@@ -21,9 +32,13 @@ const App: React.FC = () => {
     joinRoom,
     listRooms,
     fetchServerStatus,
+    rejoinRoom,
     socketId,
     socket,
-  } = useSignaling(SIGNALING_SERVER);
+    reconnectionState,
+  } = useSignaling(SIGNALING_SERVER, {
+    storage: createStorageProvider(),
+  });
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -53,13 +68,26 @@ const App: React.FC = () => {
               {error}
             </div>
           )}
+          {reconnectionState.canRejoin && !currentRoom && (
+            <div className="mt-4 p-4 bg-yellow-100 rounded">
+              <p className="text-yellow-800 mb-2">
+                You were previously in room: {reconnectionState.lastRoomId}
+              </p>
+              <button
+                onClick={rejoinRoom}
+                className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 transition-colors"
+              >
+                Rejoin Room
+              </button>
+            </div>
+          )}
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div>
             <ServerInfo status={serverStatus} />
 
-            {!currentRoom && (
+            {!currentRoom && !reconnectionState.canRejoin && (
               <>
                 <RoomCreator onCreateRoom={createRoom} />
                 <RoomList rooms={availableRooms} onJoinRoom={joinRoom} />

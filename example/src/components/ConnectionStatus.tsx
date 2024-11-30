@@ -6,6 +6,7 @@ interface Props {
   state?: WebRTCState;
   onStartConnection: (peerId: string) => void;
   onSendPing?: (peerId: string) => void;
+  isDisconnected?: boolean;
 }
 
 export const ConnectionStatus: React.FC<Props> = ({
@@ -13,8 +14,10 @@ export const ConnectionStatus: React.FC<Props> = ({
   state,
   onStartConnection,
   onSendPing,
+  isDisconnected,
 }) => {
   const getStatusColor = (status?: string) => {
+    if (isDisconnected) return "bg-yellow-500";
     switch (status) {
       case "connected":
         return "bg-green-500";
@@ -39,10 +42,13 @@ export const ConnectionStatus: React.FC<Props> = ({
           <div
             className={`w-2 h-2 rounded-full ${getStatusColor(state?.status)} mr-2`}
           />
-          <span className="font-medium">Peer {peerId.slice(0, 8)}</span>
+          <span className="font-medium">
+            Peer {peerId.slice(0, 8)}
+            {isDisconnected && " (Temporarily Disconnected)"}
+          </span>
         </div>
         <div className="flex gap-2">
-          {(!state || state.status === "idle") && (
+          {(!state || state.status === "idle") && !isDisconnected && (
             <button
               onClick={() => onStartConnection(peerId)}
               className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
@@ -50,7 +56,7 @@ export const ConnectionStatus: React.FC<Props> = ({
               Connect
             </button>
           )}
-          {state?.status === "connected" && (
+          {state?.status === "connected" && !isDisconnected && (
             <button
               onClick={handlePingClick}
               className="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
@@ -63,7 +69,9 @@ export const ConnectionStatus: React.FC<Props> = ({
 
       {state && (
         <div className="text-sm text-gray-600">
-          <div>Status: {state.status}</div>
+          <div>
+            Status: {isDisconnected ? "Temporarily Disconnected" : state.status}
+          </div>
           {state.connectionInfo && (
             <>
               <div>

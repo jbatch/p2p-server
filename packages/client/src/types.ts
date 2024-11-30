@@ -1,4 +1,4 @@
-// example/src/types.ts
+// client/src/types.ts
 export interface Room {
   id: string;
   playerCount: number;
@@ -9,6 +9,7 @@ export interface Room {
 export interface Peer {
   id: string;
   isHost: boolean;
+  disconnected: boolean;
 }
 
 export interface ServerStatus {
@@ -39,3 +40,9 @@ export interface Message {
 }
 
 export type MessageHandler = (peerId: string, message: Message) => void;
+
+export interface StorageProvider {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}

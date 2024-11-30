@@ -1,4 +1,4 @@
-// example/src/hooks/useWebRTC.ts
+// client/src/hooks/useWebRTC.ts
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Socket } from "socket.io-client";
 import {
@@ -30,8 +30,6 @@ export const useWebRTC = (
   }, []);
 
   const handleMessage = useCallback((peerId: string, message: Message) => {
-    console.log(`[useWebRTC] Received message from ${peerId}:`, message);
-
     // Call all registered handlers
     messageHandlers.current.forEach((handler) => {
       try {
@@ -64,7 +62,6 @@ export const useWebRTC = (
     }
 
     try {
-      console.log(`[useWebRTC] Sending message to peer ${peerId}:`, message);
       channel.send(JSON.stringify(message));
     } catch (error) {
       console.error(
@@ -79,8 +76,6 @@ export const useWebRTC = (
     (peerId: string) => {
       if (connections.current[peerId]) return;
 
-      console.log(`[useWebRTC] Initializing connection with peer ${peerId}`);
-
       const pc = new RTCPeerConnection({
         iceServers: [
           { urls: "stun:stun.l.google.com:19302" },
@@ -89,15 +84,7 @@ export const useWebRTC = (
       });
 
       const handleDataChannel = (channel: RTCDataChannel) => {
-        console.log(
-          `[useWebRTC] Setting up data channel for peer ${peerId}`,
-          channel.label
-        );
-
         channel.onopen = () => {
-          console.log(
-            `[useWebRTC] Data channel ${channel.label} with ${peerId} opened`
-          );
           setState((prev) => ({
             ...prev,
             [peerId]: {
@@ -107,11 +94,7 @@ export const useWebRTC = (
           }));
         };
 
-        channel.onclose = () => {
-          console.log(
-            `[useWebRTC] Data channel ${channel.label} with ${peerId} closed`
-          );
-        };
+        channel.onclose = () => {};
 
         channel.onerror = (error) => {
           console.error(
@@ -121,10 +104,6 @@ export const useWebRTC = (
         };
 
         channel.onmessage = (event) => {
-          console.log(
-            `[useWebRTC] Received raw message on ${channel.label}:`,
-            event.data
-          );
           try {
             const message = JSON.parse(event.data);
             handleMessage(peerId, message);
@@ -146,10 +125,6 @@ export const useWebRTC = (
       handleDataChannel(channel);
 
       pc.ondatachannel = (event) => {
-        console.log(
-          `[useWebRTC] Received data channel from ${peerId}`,
-          event.channel.label
-        );
         handleDataChannel(event.channel);
       };
 
@@ -158,7 +133,6 @@ export const useWebRTC = (
       // Handle ICE candidates
       pc.onicecandidate = (event) => {
         if (event.candidate) {
-          console.log("Sending ICE candidate to", peerId);
           socket?.emit("signal", {
             peerId,
             signal: {
@@ -183,10 +157,6 @@ export const useWebRTC = (
       };
 
       pc.oniceconnectionstatechange = () => {
-        console.log(
-          `ICE connection state with ${peerId}:`,
-          pc.iceConnectionState
-        );
         if (pc.iceConnectionState === "failed") {
           setState((prev) => ({
             ...prev,

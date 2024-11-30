@@ -1,19 +1,46 @@
-// example/src/hooks/useSignaling.ts
+// client/src/hooks/useSignaling.ts
 import { useEffect, useRef, useState, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
-import { Room, Peer, ServerStatus } from "../types";
+import { Room, Peer, ServerStatus, StorageProvider } from "../types";
 
-export const useSignaling = (serverUrl: string) => {
+interface SignalingOptions {
+  storage?: StorageProvider;
+}
+
+interface ReconnectionState {
+  token: string | null;
+  lastRoomId: string | null;
+  canRejoin: boolean;
+}
+
+export const useSignaling = (
+  serverUrl: string,
+  options: SignalingOptions = {}
+) => {
+  const storage = options.storage || localStorage;
   const [isConnected, setIsConnected] = useState(false);
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
   const [peers, setPeers] = useState<Peer[]>([]);
   const [availableRooms, setAvailableRooms] = useState<Room[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
+  const [reconnectionState, setReconnectionState] = useState<ReconnectionState>(
+    {
+      token: storage.getItem("signalingReconnectionToken"),
+      lastRoomId: null,
+      canRejoin: false,
+    }
+  );
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
-    const socket = io(serverUrl);
+    const socket = io(serverUrl, {
+      auth: reconnectionState.token
+        ? {
+            reconnectionToken: reconnectionState.token,
+          }
+        : undefined,
+    });
     socketRef.current = socket;
 
     socket.on("connect", () => {
@@ -23,8 +50,10 @@ export const useSignaling = (serverUrl: string) => {
 
     socket.on("disconnect", () => {
       setIsConnected(false);
-      setCurrentRoom(null);
-      setPeers([]);
+      setReconnectionState((prev) => ({
+        ...prev,
+        lastRoomId: currentRoom,
+      }));
     });
 
     socket.on("error", ({ message }) => {
@@ -33,23 +62,19 @@ export const useSignaling = (serverUrl: string) => {
 
     socket.on("room-created", ({ roomId }) => {
       setCurrentRoom(roomId);
-      setPeers([{ id: socket.id!, isHost: true }]);
+      setPeers([{ id: socket.id!, isHost: true, disconnected: false }]);
     });
 
     socket.on("room-joined", ({ roomId, peers }) => {
       setCurrentRoom(roomId);
-      console.log("room-joined", { roomId, peers });
       setPeers(peers);
     });
 
-    // Add handler for the new room-peers-updated event
     socket.on("room-peers-updated", ({ peers }) => {
       setPeers(peers);
     });
 
-    socket.on("peer-joined", ({ peerId }) => {
-      console.log(`Peer ${peerId} joined`);
-    });
+    socket.on("peer-joined", ({ peerId }) => {});
 
     socket.on("peer-left", ({ peerId }) => {
       setPeers((prev) => prev.filter((peer) => peer.id !== peerId));
@@ -74,6 +99,34 @@ export const useSignaling = (serverUrl: string) => {
       setError("Room expired");
     });
 
+    socket.on("session-created", ({ reconnectionToken }) => {
+      storage.setItem("signalingReconnectionToken", reconnectionToken);
+      setReconnectionState((prev) => ({
+        ...prev,
+        token: reconnectionToken,
+      }));
+    });
+
+    socket.on("reconnection-possible", ({ roomId, gameType }) => {
+      setReconnectionState((prev) => ({
+        ...prev,
+        lastRoomId: roomId,
+        canRejoin: true,
+      }));
+    });
+
+    socket.on("peer-disconnected", ({ peerId, timestamp }) => {
+      setPeers((prev) =>
+        prev.map((peer) =>
+          peer.id === peerId ? { ...peer, disconnected: true } : peer
+        )
+      );
+    });
+
+    socket.on("peer-rejoined", ({ peerId, peers, timestamp }) => {
+      setPeers(peers);
+    });
+
     return () => {
       socket.disconnect();
     };
@@ -86,6 +139,14 @@ export const useSignaling = (serverUrl: string) => {
   const joinRoom = useCallback((roomId: string) => {
     socketRef.current?.emit("join-room", { roomId });
   }, []);
+
+  const rejoinRoom = useCallback(() => {
+    if (reconnectionState.canRejoin && reconnectionState.lastRoomId) {
+      socketRef.current?.emit("rejoin-room", {
+        roomId: reconnectionState.lastRoomId,
+      });
+    }
+  }, [reconnectionState.canRejoin, reconnectionState.lastRoomId]);
 
   const listRooms = useCallback((gameType: string) => {
     socketRef.current?.emit("list-rooms", { gameType });
@@ -101,6 +162,15 @@ export const useSignaling = (serverUrl: string) => {
     }
   }, [serverUrl]);
 
+  const clearReconnectionData = useCallback(() => {
+    storage.removeItem("signalingReconnectionToken");
+    setReconnectionState({
+      token: null,
+      lastRoomId: null,
+      canRejoin: false,
+    });
+  }, []);
+
   return {
     isConnected,
     currentRoom,
@@ -108,11 +178,14 @@ export const useSignaling = (serverUrl: string) => {
     availableRooms,
     error,
     serverStatus,
-    createRoom,
-    joinRoom,
-    listRooms,
-    fetchServerStatus,
     socketId: socketRef.current?.id,
     socket: socketRef.current,
+    reconnectionState,
+    createRoom,
+    joinRoom,
+    rejoinRoom,
+    listRooms,
+    fetchServerStatus,
+    clearReconnectionData,
   };
 };

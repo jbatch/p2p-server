@@ -24,6 +24,7 @@ interface ListRoomsPayload {
 }
 
 export const createSocketHandlers = (io: Server, server: SignalingServer) => {
+  const RECONNECTION_WINDOW_MS = 60000; // 1 minute to reconnect
   const cleanupRoom = (roomId: string) => {
     const room = server.rooms.get(roomId);
     if (!room) return;
@@ -36,6 +37,54 @@ export const createSocketHandlers = (io: Server, server: SignalingServer) => {
     // Delete the room
     server.rooms.delete(roomId);
     logger.info({ roomId }, "Room cleaned up");
+  };
+
+  const handleConnection = (socket: Socket) => {
+    const reconnectionToken = socket.handshake.auth.reconnectionToken;
+
+    if (reconnectionToken) {
+      // Find existing session by reconnection token
+      const existingSession = Array.from(server.clientSessions.values()).find(
+        (session) => session.reconnectionToken === reconnectionToken
+      );
+
+      if (existingSession) {
+        // Update the session with the new socket ID
+        const oldSocketId = existingSession.id;
+        existingSession.id = socket.id;
+        existingSession.lastSeen = new Date();
+        server.clientSessions.delete(oldSocketId);
+        server.clientSessions.set(socket.id, existingSession);
+
+        // If they were in a room, notify them
+        if (existingSession.roomId) {
+          const room = server.rooms.get(existingSession.roomId);
+          if (room) {
+            socket.emit("reconnection-possible", {
+              roomId: existingSession.roomId,
+              gameType: room.gameType,
+              timestamp: Date.now(),
+            });
+          }
+        }
+      }
+    }
+
+    // Create new session
+    if (!server.clientSessions.has(socket.id)) {
+      server.clientSessions.set(socket.id, {
+        id: socket.id,
+        roomId: null,
+        lastSeen: new Date(),
+        reconnectionToken: uuidv4(),
+      });
+
+      // Send the reconnection token to the client
+      socket.emit("session-created", {
+        reconnectionToken: server.clientSessions.get(socket.id)
+          ?.reconnectionToken,
+      });
+    }
   };
 
   const handleCreateRoom = (
@@ -60,10 +109,15 @@ export const createSocketHandlers = (io: Server, server: SignalingServer) => {
         clients: new Set([socket.id]),
         maxClients,
         createdAt: new Date(),
+        disconnectedClients: new Map(),
       };
 
       server.rooms.set(roomId, room);
       server.clientToRoom.set(socket.id, roomId);
+      const existingSession = server.clientSessions.get(socket.id);
+      if (existingSession) {
+        existingSession.roomId = roomId;
+      }
       socket.join(roomId);
 
       // Schedule room cleanup after timeout
@@ -104,12 +158,17 @@ export const createSocketHandlers = (io: Server, server: SignalingServer) => {
       // Add the new client to the room BEFORE sending any notifications
       room.clients.add(socket.id);
       server.clientToRoom.set(socket.id, roomId);
+      const existingSession = server.clientSessions.get(socket.id);
+      if (existingSession) {
+        existingSession.roomId = roomId;
+      }
       socket.join(roomId);
 
       // Get the list of peers (including the new joiner)
       const allPeers = Array.from(room.clients).map((id) => ({
         id,
         isHost: id === room.hostId,
+        disconnected: room.disconnectedClients.get(id) !== undefined,
       }));
 
       // Send the complete peer list to everyone in the room
@@ -205,40 +264,130 @@ export const createSocketHandlers = (io: Server, server: SignalingServer) => {
       const room = server.rooms.get(roomId);
       if (!room) return;
 
-      // Remove client from room
+      // Instead of immediately removing the client, mark them as disconnected
       room.clients.delete(socket.id);
-      server.clientToRoom.delete(socket.id);
 
-      // If room is empty, clean it up
-      if (room.clients.size === 0) {
-        cleanupRoom(roomId);
-      } else {
-        // If the host left, assign new host
-        if (socket.id === room.hostId) {
-          const newHost = Array.from(room.clients)[0];
-          room.hostId = newHost;
-          io.to(roomId).emit("host-changed", {
-            newHostId: newHost,
-            timestamp: Date.now(),
-          });
-        }
+      // Set up reconnection window
+      const timeoutHandler = setTimeout(() => {
+        // If client hasn't reconnected within window, clean up fully
+        room.disconnectedClients.delete(socket.id);
+        server.clientToRoom.delete(socket.id);
+        server.clientSessions.delete(socket.id);
 
-        // Notify remaining peers
-        socket.to(roomId).emit("peer-left", {
-          peerId: socket.id,
+        logger.info("Client reconnect timeout expired");
+
+        // Update other players
+        const allPeers = Array.from(room.clients).map((id) => ({
+          id,
+          isHost: id === room.hostId,
+          disconnected: room.disconnectedClients.get(id) !== undefined,
+        }));
+        io.to(roomId).emit("room-peers-updated", {
+          peers: allPeers,
           timestamp: Date.now(),
         });
-      }
 
-      logger.info({ clientId: socket.id, roomId }, "Client disconnected");
+        // If room is empty after grace period, clean it up
+        if (room.clients.size === 0 && room.disconnectedClients.size === 0) {
+          cleanupRoom(roomId);
+        } else {
+          // If the host left, assign new host
+          if (socket.id === room.hostId) {
+            const newHost = Array.from(room.clients)[0];
+            room.hostId = newHost;
+            io.to(roomId).emit("host-changed", {
+              newHostId: newHost,
+              timestamp: Date.now(),
+            });
+          }
+        }
+      }, RECONNECTION_WINDOW_MS);
+
+      // Notify remaining peers of disconnect
+      socket.to(roomId).emit("peer-disconnected", {
+        peerId: socket.id,
+        timestamp: Date.now(),
+      });
+
+      // Store disconnected client info
+      room.disconnectedClients.set(socket.id, {
+        timeoutHandler,
+        reconnectionToken:
+          server.clientSessions.get(socket.id)?.reconnectionToken || "",
+      });
+
+      logger.info(
+        { clientId: socket.id, roomId },
+        "Client temporarily disconnected"
+      );
     } catch (error) {
       logger.error({ error, clientId: socket.id }, "Error handling disconnect");
     }
   };
 
+  const handleRejoinRoom = (socket: Socket, { roomId }: JoinRoomPayload) => {
+    try {
+      const room = server.rooms.get(roomId);
+      if (!room) {
+        throw new Error("Room not found");
+      }
+
+      const session = server.clientSessions.get(socket.id);
+      if (!session || session.roomId !== roomId) {
+        throw new Error("Invalid rejoin attempt");
+      }
+
+      // Clear reconnection timeout
+      const disconnectedClient = room.disconnectedClients.get(socket.id);
+      if (disconnectedClient) {
+        clearTimeout(disconnectedClient.timeoutHandler);
+        room.disconnectedClients.delete(socket.id);
+      }
+
+      // Rejoin room
+      room.clients.add(socket.id);
+      server.clientToRoom.set(socket.id, roomId);
+      socket.join(roomId);
+
+      // Get updated peer list
+      const allPeers = Array.from(room.clients).map((id) => ({
+        id,
+        isHost: id === room.hostId,
+        disconnected: room.disconnectedClients.get(id) !== undefined,
+      }));
+
+      // Notify everyone
+      io.to(roomId).emit("peer-rejoined", {
+        peerId: socket.id,
+        peers: allPeers,
+        timestamp: Date.now(),
+      });
+
+      socket.emit("room-joined", {
+        roomId,
+        peers: allPeers,
+        isHost: false,
+        timestamp: Date.now(),
+      });
+
+      logger.info({ roomId, clientId: socket.id }, "Client rejoined room");
+    } catch (error) {
+      logger.error(
+        { error, clientId: socket.id, roomId },
+        "Failed to rejoin room"
+      );
+      socket.emit("error", {
+        message:
+          error instanceof Error ? error.message : "Failed to rejoin room",
+      });
+    }
+  };
+
   return {
+    handleConnection,
     handleCreateRoom,
     handleJoinRoom,
+    handleRejoinRoom,
     handleSignal,
     handleListRooms,
     handleDisconnect,

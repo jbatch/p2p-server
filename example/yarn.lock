@@ -351,11 +351,6 @@
     wrap-ansi "^8.1.0"
     wrap-ansi-cjs "npm:wrap-ansi@^7.0.0"
 
-"@jbatch/webrtc-client@^0.1.1":
-  version "0.1.1"
-  resolved "https://registry.yarnpkg.com/@jbatch/webrtc-client/-/webrtc-client-0.1.1.tgz#fe1600708c14af51744d48ff0a02ac68f6948444"
-  integrity sha512-xK2P2SMLRuQ0obntvzrCY0zwFjic7F1PFhR/kF3gbt4l02qEWog7QrVHJlS69jcYbxzJ6uEaMjP9nczkhnU2TA==
-
 "@jridgewell/gen-mapping@^0.3.2", "@jridgewell/gen-mapping@^0.3.5":
   version "0.3.5"
   resolved "https://registry.yarnpkg.com/@jridgewell/gen-mapping/-/gen-mapping-0.3.5.tgz#dcce6aff74bdf6dad1a95802b69b04a2fcb1fb36"
