@@ -13,6 +13,7 @@ A game-agnostic WebRTC signaling server designed to facilitate peer-to-peer conn
 - 📊 Health monitoring
 - 🚀 Production-ready logging
 - ⚡ TypeScript support
+- 🔌 Reconnection handling
 
 ## Getting Started
 
@@ -60,6 +61,8 @@ function GameComponent() {
     createRoom,
     joinRoom,
     listRooms,
+    reconnectionState,
+    rejoinRoom,
   } = useSignaling("http://your-signaling-server:3001");
 
   const { state, startConnection, sendMessage, addMessageHandler } = useWebRTC(
@@ -67,6 +70,13 @@ function GameComponent() {
     roomId,
     peers
   );
+
+  // Handle reconnection
+  useEffect(() => {
+    if (reconnectionState.canRejoin) {
+      rejoinRoom();
+    }
+  }, [reconnectionState.canRejoin]);
 
   // Your game logic here
 }
@@ -96,32 +106,46 @@ ROOM_TIMEOUT_MS=3600000
 | MAX_ROOMS       | Maximum number of concurrent rooms        | 1000        |
 | ROOM_TIMEOUT_MS | Room timeout in milliseconds              | 3600000     |
 
-## Development
+## Handling Disconnects and Reconnection
 
-### Server
+The server implements a robust reconnection system that allows players to seamlessly rejoin their game session after temporary disconnections (e.g., network issues, browser refresh).
 
-```bash
-# Start development server with hot reload
-yarn dev
+### Key Features
 
-# Check types
-yarn typecheck
+- 60-second reconnection window
+- Automatic session tracking
+- Seamless state recovery
+- Host migration during disconnects
+- Peer status updates
 
-# Lint code
-yarn lint
+### How it Works
 
-# Format code
-yarn format
-```
+1. When a client first connects, they receive a unique reconnection token
+2. If disconnected, clients have 60 seconds to reconnect using their token
+3. During disconnection, the client's spot in the room is reserved
+4. Other peers are notified of the disconnection status
+5. When reconnecting, if their previous session is valid:
+   - Client receives a `reconnection-possible` event with their previous room info
+   - Client can choose to rejoin using `rejoinRoom()`
+   - Other peers are notified when the client rejoins
 
-### Production
+### Client Implementation
 
-```bash
-# Build project
-yarn build
+```typescript
+const { reconnectionState, rejoinRoom } = useSignaling(
+  "http://your-signaling-server:3001",
+  {
+    // Optional: Use sessionStorage instead of localStorage for tokens
+    storage: sessionStorage,
+  }
+);
 
-# Start production server
-yarn start
+// Handle reconnection
+useEffect(() => {
+  if (reconnectionState.canRejoin) {
+    rejoinRoom();
+  }
+}, [reconnectionState.canRejoin]);
 ```
 
 ## API Reference
@@ -134,19 +158,25 @@ yarn start
 | ----------- | ------------------------------------------- | ----------------------------- |
 | create-room | `{ gameType: string, maxClients?: number }` | Create a new room             |
 | join-room   | `{ roomId: string }`                        | Join an existing room         |
+| rejoin-room | `{ roomId: string }`                        | Rejoin after disconnection    |
 | signal      | `{ peerId: string, signal: any }`           | Forward WebRTC signal to peer |
 | list-rooms  | `{ gameType: string }`                      | Get list of available rooms   |
 
 #### Server → Client
 
-| Event        | Payload                                | Description              |
-| ------------ | -------------------------------------- | ------------------------ |
-| room-created | `{ roomId: string, gameType: string }` | Room creation confirmed  |
-| peer-joined  | `{ peerId: string }`                   | New peer joined room     |
-| peer-left    | `{ peerId: string }`                   | Peer left room           |
-| room-joined  | `{ roomId: string, peers: string[] }`  | Successfully joined room |
-| room-list    | `{ rooms: Array<RoomInfo> }`           | List of available rooms  |
-| error        | `{ message: string }`                  | Error message            |
+| Event                 | Payload                                 | Description                   |
+| --------------------- | --------------------------------------- | ----------------------------- |
+| room-created          | `{ roomId: string, gameType: string }`  | Room creation confirmed       |
+| peer-joined           | `{ peerId: string }`                    | New peer joined room          |
+| peer-left             | `{ peerId: string }`                    | Peer left room                |
+| peer-disconnected     | `{ peerId: string, timestamp: number }` | Peer temporarily disconnected |
+| peer-rejoined         | `{ peerId: string, peers: Peer[] }`     | Peer reconnected to room      |
+| room-joined           | `{ roomId: string, peers: Peer[] }`     | Successfully joined room      |
+| room-list             | `{ rooms: Array<RoomInfo> }`            | List of available rooms       |
+| session-created       | `{ reconnectionToken: string }`         | New session token issued      |
+| reconnection-possible | `{ roomId: string, gameType: string }`  | Reconnection available        |
+| room-peers-updated    | `{ peers: Peer[] }`                     | Updated list of room peers    |
+| error                 | `{ message: string }`                   | Error message                 |
 
 ## Security
 
@@ -166,6 +196,7 @@ Check out the [example](example) directory for a complete implementation showing
 - Establish WebRTC connections
 - Handle peer connections
 - Send and receive messages
+- Implement reconnection handling
 
 ## License
 
