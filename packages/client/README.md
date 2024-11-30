@@ -15,6 +15,7 @@ yarn add @jbatch/webrtc-client
 - 🤝 Peer discovery and signaling
 - 🏠 Room management
 - 📊 Connection state tracking
+- 🔌 Reconnection handling
 - 🚀 TypeScript support
 
 ## Quick Start
@@ -23,8 +24,23 @@ yarn add @jbatch/webrtc-client
 import { useSignaling, useWebRTC } from "@jbatch/webrtc-client";
 
 function Game() {
-  const { isConnected, currentRoom, peers, createRoom, joinRoom, listRooms } =
-    useSignaling("http://your-signaling-server:3001");
+  const {
+    // Connection state
+    isConnected,
+    currentRoom,
+    peers,
+    socketId,
+    reconnectionState,
+
+    // Actions
+    createRoom,
+    joinRoom,
+    rejoinRoom,
+    listRooms,
+  } = useSignaling("http://your-signaling-server:3001", {
+    // Optional: Configure storage for reconnection tokens
+    storage: sessionStorage,
+  });
 
   // Handle WebRTC connections
   const { state, startConnection, sendMessage, addMessageHandler } = useWebRTC(
@@ -33,7 +49,13 @@ function Game() {
     peers
   );
 
-  // Your game logic here
+  // Optional: Handle reconnection possibilities
+  useEffect(() => {
+    if (reconnectionState.canRejoin) {
+      console.log(`Can rejoin room: ${reconnectionState.lastRoomId}`);
+      // rejoinRoom();
+    }
+  }, [reconnectionState.canRejoin]);
 }
 ```
 
@@ -54,13 +76,26 @@ const {
   serverStatus: ServerStatus | null,
   socketId: string | undefined,
   socket: Socket | null,
+  reconnectionState: ReconnectionState,
 
   // Actions
   createRoom: (gameType: string, maxClients?: number) => void,
   joinRoom: (roomId: string) => void,
+  rejoinRoom: () => void,
   listRooms: (gameType: string) => void,
-  fetchServerStatus: () => Promise<void>
-} = useSignaling(serverUrl: string);
+  fetchServerStatus: () => Promise<void>,
+  clearReconnectionData: () => void,
+} = useSignaling(serverUrl: string, options?: SignalingOptions);
+
+interface SignalingOptions {
+  storage?: StorageProvider;
+}
+
+interface StorageProvider {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+  removeItem: (key: string) => void;
+}
 ```
 
 ### useWebRTC
@@ -102,6 +137,17 @@ interface Room {
 interface Peer {
   id: string;
   isHost: boolean;
+  disconnected: boolean;
+}
+```
+
+### ReconnectionState
+
+```typescript
+interface ReconnectionState {
+  token: string | null;
+  lastRoomId: string | null;
+  canRejoin: boolean;
 }
 ```
 
@@ -147,20 +193,39 @@ useEffect(() => {
 2. Connection Management
 
 ```typescript
-const { peers, currentRoom } = useSignaling(serverUrl);
+const { peers, currentRoom, socketId } = useSignaling(serverUrl);
 const { startConnection } = useWebRTC(socket, currentRoom, peers);
 
 useEffect(() => {
   // Auto-connect to new peers
   peers.forEach((peer) => {
-    if (peer.id !== socketId) {
+    if (peer.id !== socketId && !peer.disconnected) {
       startConnection(peer.id);
     }
   });
 }, [peers]);
 ```
 
-3. Message Handling
+3. Reconnection Handling
+
+```typescript
+const { reconnectionState, rejoinRoom } = useSignaling(serverUrl);
+
+useEffect(() => {
+  if (reconnectionState.canRejoin) {
+    // Option 1: Auto-rejoin
+    rejoinRoom();
+
+    // Option 2: Show user prompt
+    const shouldRejoin = window.confirm("Rejoin previous game?");
+    if (shouldRejoin) {
+      rejoinRoom();
+    }
+  }
+}, [reconnectionState.canRejoin]);
+```
+
+4. Message Handling
 
 ```typescript
 const { addMessageHandler } = useWebRTC(socket, currentRoom, peers);
@@ -171,6 +236,28 @@ useEffect(() => {
     console.log(`Message from ${peerId}:`, message);
   });
 }, []);
+```
+
+## Storage Configuration
+
+By default, reconnection tokens are stored in `localStorage`. You can customize this:
+
+```typescript
+// Use sessionStorage instead
+const { reconnectionState } = useSignaling(serverUrl, {
+  storage: sessionStorage,
+});
+
+// Or provide custom storage implementation
+const customStorage = {
+  getItem: (key) => myStorage.get(key),
+  setItem: (key, value) => myStorage.set(key, value),
+  removeItem: (key) => myStorage.delete(key),
+};
+
+const { reconnectionState } = useSignaling(serverUrl, {
+  storage: customStorage,
+});
 ```
 
 ## License
